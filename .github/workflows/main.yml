@@ -7,6 +7,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -16,13 +17,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y unzip
-          mkdir source
-          unzip -q artlabagzo.zip -d source
+          mkdir project
+          unzip -q artlabagzo.zip -d project
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -30,28 +31,30 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install dependencies and generate Android project
-        run: |
-          PROJECT_DIR=$(find source -type f -name package.json -not -path '*/node_modules/*' -printf '%h\n' | head -n 1)
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "package.json not found"
-            exit 1
-          fi
-          cd "$PROJECT_DIR"
-          npm install
-          npx expo prebuild --platform android --non-interactive
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      - name: Install dependencies
+        working-directory: project
+        run: npm ci
 
-      - name: Build APK
+      - name: TypeScript check
+        working-directory: project
+        run: npm run typecheck
+
+      - name: Generate Android project
+        working-directory: project
+        run: npx expo prebuild --platform android --no-install
+        env:
+          CI: '1'
+
+      - name: Build Release APK
+        working-directory: project/android
         run: |
-          cd "$PROJECT_DIR/android"
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ART-LAB-AGzO-APK
-          path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+          name: ART-LAB-AGzO-Release-APK
+          path: project/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           
